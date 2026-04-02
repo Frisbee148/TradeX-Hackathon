@@ -141,7 +141,6 @@ Main files and folders:
 ├── inference.py
 └── meverse/
     ├── __init__.py
-    ├── baseline_runner.py
     ├── client.py
     ├── models.py
     ├── openenv.yaml
