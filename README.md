@@ -1,192 +1,163 @@
-# MEVerse
+# Bot-aware Market Surveillance in Simulated AMM Trading
 
-MEVerse is an RL-style OpenEnv environment for evaluating whether an agent can trade and manage liquidity in a Uniswap V3-like market while avoiding MEV attacks.
+This project is a simulation environment for reinforcement learning and decision intelligence. It is not a trading bot, DeFi product, wallet, liquidity manager, or blockchain integration demo.
 
-## In One Minute
+The environment models an AMM-style market and asks an agent to act as a market surveillance controller. At each step, the agent reviews structured signals about recent trading activity and chooses one of four responses:
 
-### What is RL?
+- `ALLOW`
+- `FLAG`
+- `BLOCK`
+- `MONITOR`
 
-Reinforcement Learning, or RL, is a setup where an agent:
+The goal is to identify suspicious bot-like behavior while minimizing harm to normal users and preserving healthy market behavior.
 
-- observes the current state of an environment
-- chooses an action
-- receives a reward or penalty
-- improves by learning which actions lead to better long-term outcomes
+## What The Benchmark Measures
 
-In our project, the environment is a simulated DeFi market. The agent must decide when to trade, when to provide liquidity, when to wait, and how to avoid being exploited by adversarial bots.
+This benchmark is designed as a real-world surveillance and anomaly-detection task:
 
-### What is MEV?
+- detect suspicious bursts of trading activity
+- detect repeated manipulation patterns
+- avoid false positives on normal activity
+- avoid false negatives on harmful activity
+- preserve healthy market participation
 
-MEV stands for `Maximal Extractable Value`. In simple terms, it is the profit that bots or validators can extract by seeing a transaction before it is finalized and then reordering, inserting, or copying transactions around it.
+The benchmark is reward-shaped for partial progress. It does not optimize for profit.
 
-For a normal user this means:
+## Observation Space
 
-- you submit a trade
-- a bot sees it in the public mempool
-- the bot acts before or around your trade
-- you get a worse price, lose fees, or both
+Each step returns a fixed-size structured observation with surveillance signals:
 
-This is not a theoretical problem.
+- `current_amm_price`
+- `liquidity_snapshot`
+- `recent_trade_count`
+- `trades_in_window`
+- `trade_frequency`
+- `average_trade_size`
+- `maximum_trade_size`
+- `recent_slippage_impact`
+- `time_gap_mean`
+- `time_gap_min`
+- `recent_time_gaps`
+- `recent_price_impacts`
+- `burst_indicator`
+- `pattern_indicator`
+- `suspiciousness_score`
+- `manipulation_score`
 
-`MEV bots extracted $686M from Ethereum users in 2023.`
+## Action Space
 
-### What problem are we solving?
+Only these actions are valid:
 
-We are building an environment where an agent learns and is evaluated on a real task:
+- `ALLOW`
+- `FLAG`
+- `BLOCK`
+- `MONITOR`
 
-- executing swaps in a concentrated-liquidity market
-- managing liquidity positions
-- recognizing mempool danger signals
-- adapting to adversarial bot behavior
+Legacy trading and liquidity-management actions have been removed from the environment logic.
 
-Instead of scoring a model on a static question-answer benchmark, MEVerse tests whether the agent can make a sequence of decisions under changing market conditions.
+## Reward Logic
 
-## Why This Matters
+Reward combines:
 
-Most trading benchmarks are too simple:
+- positive reward for correctly detecting suspicious behavior
+- positive reward for correctly allowing normal activity
+- false positive penalties
+- false negative penalties
+- severity bonuses on harmful suspicious activity
+- overblocking penalties to protect healthy market behavior
 
-- `BUY / SELL / HOLD`
-- no adversary
-- no market microstructure
-- no mempool visibility
+## Tasks
 
-MEVerse is built to be closer to the real operational problem in DeFi:
+The repo includes three deterministic tasks with distinct difficulty levels:
 
-- liquidity is concentrated by price range, like Uniswap V3
-- transactions can be observed and exploited before execution
-- the same action may be safe in one state and costly in another
-- the agent is rewarded for both profit and defensive behavior
+1. `burst_detection`
+2. `pattern_manipulation_detection`
+3. `full_market_surveillance`
 
-## What We Built
+- `burst_detection`: learn to catch abrupt high-frequency bursts.
+- `pattern_manipulation_detection`: learn repeated timing and size signatures.
+- `full_market_surveillance`: balance burst detection, pattern detection, and false-positive control in mixed traffic.
 
-MEVerse is an OpenEnv environment with three difficulty levels:
+## Baseline Policy
 
-- `easy`: passive market, lower volatility, no aggressive adversary
-- `medium`: JIT-liquidity behavior appears
-- `hard`: adaptive adversary and higher volatility
+The baseline policy follows simple surveillance rules:
 
-The environment tracks:
+- if pattern score is high and slippage is high, `BLOCK`
+- elif burst score or trade frequency is high, `FLAG`
+- elif suspiciousness is moderate, `MONITOR`
+- else `ALLOW`
 
-- pool price and active liquidity
-- local tick distribution around the current price
-- agent balances and LP positions
-- visible mempool transactions
-- recent MEV loss
-- episode progress and task type
+Implementation lives in [meverse/baseline_policy.py](/d:/TradeX/meverse/baseline_policy.py).
 
-The agent can:
+## Running The Environment
 
-- `swap_exact_in`
-- `split_swap`
-- `add_liquidity`
-- `remove_liquidity`
-- `range_order`
-- `jit_liquidity`
-- `hold`
-- `close_episode`
+Serve the OpenEnv app from the repo root:
 
-## How The Environment Works
-
-At each step:
-
-1. the agent receives the current market and portfolio state
-2. it chooses an action
-3. the environment simulates trade execution, LP updates, and adversarial behavior
-4. the agent receives a reward and the next observation
-
-The reward is dense, not just pass/fail. It reflects:
-
-- execution quality
-- portfolio improvement
-- LP fee capture
-- MEV damage avoided or suffered
-- end-of-episode performance
-
-At the end of an episode, the environment also returns a normalized deterministic grade in `[0, 1]`.
-
-## Current Base Implementation
-
-The current implementation already includes the base project structure and working environment logic:
-
-- typed OpenEnv models for action and observation
-- a MEVerse environment server
-- a Python client for interacting with the environment
-- task switching across `easy`, `medium`, and `hard`
-- local validation through `openenv validate`
-- a baseline inference runner using the OpenAI client
-- placeholder `.env` configuration for model access
-
-The current base logic supports:
-
-- swap execution
-- liquidity add/remove flows
-- range-style LP positioning
-- JIT-liquidity simulation
-- MEV-aware step rewards
-- bounded invalid-action penalties with surfaced error metadata
-- deterministic grading output
-
-## Repository Structure
-
-There is now one canonical README for the whole project at the repo root.
-
-Main files and folders:
-
-```text
-.
-├── README.md
-├── .env
-├── app.py
-├── client.py
-├── inference.py
-└── meverse/
-    ├── __init__.py
-    ├── client.py
-    ├── models.py
-    ├── openenv.yaml
-    ├── pyproject.toml
-    ├── Dockerfile
-    └── server/
-        ├── app.py
-        └── meverse_environment.py
+```bash
+python app.py
 ```
 
-## How To Run The Current Base
-
-Validate the environment:
+Validate the environment package directly:
 
 ```bash
 cd meverse
 openenv validate
 ```
 
-Run the baseline inference from the repo root:
+## Running Inference
+
+The root inference runner is [inference.py](/d:/TradeX/inference.py). It loads the surveillance environment, runs a baseline or OpenAI-backed policy, and prints clean competition-style logs.
 
 ```bash
 python inference.py
 ```
 
-Current inference configuration is read from:
+Optional task selection:
+
+```powershell
+$env:MEVERSE_TASK="full_market_surveillance"
+python inference.py
+```
+
+## Required Environment Variables
+
+`inference.py` reads these variables:
 
 - `API_BASE_URL`
 - `MODEL_NAME`
 - `HF_TOKEN`
-- `LOCAL_IMAGE_NAME` or `MEVERSE_BASE_URL`
-- `MEVERSE_TASK`
 
-## What This Project Is Evaluating
+Example PowerShell setup:
 
-This project is best understood as an RL-style evaluation environment for decision-making under adversarial market conditions.
+```powershell
+$env:API_BASE_URL="https://router.huggingface.co/v1"
+$env:MODEL_NAME="gpt-4o-mini"
+$env:HF_TOKEN="your-token"
+python inference.py
+```
 
-The model is not being judged on memorizing DeFi trivia. It is being judged on whether it can:
+If `HF_TOKEN` is not set or the model call fails, the script falls back to a deterministic local baseline.
 
-- interpret structured market state
-- choose sensible multi-step actions
-- avoid predictable exploitation
-- perform better as task difficulty increases
+## Validation And Graders
 
-## Current Scope
+Validation logic is implemented in [meverse/validation.py](/d:/TradeX/meverse/validation.py). It:
 
-This README intentionally focuses on the base implementation now in the repo. It explains the problem, the environment, and the current working structure without overloading the reader with deeper protocol math.
+- enumerates all tasks
+- runs each task independently
+- runs the deterministic grader independently
+- prints task-wise scores
+- asserts every score satisfies `0.0 <= score <= 1.0`
 
-More detailed technical documentation can be added once the next implementation layer is complete.
+Run it with:
+
+```bash
+python -m meverse.validation
+```
+
+## Verifying Score Range
+
+When you run the validation suite, each task prints a normalized score and the script asserts the range check `0.0 <= score <= 1.0`.
+
+## OpenEnv Metadata
+
+Project metadata for OpenEnv lives in [meverse/openenv.yaml](/d:/TradeX/meverse/openenv.yaml). It now describes the repository as a market surveillance benchmark rather than a trading or liquidity-management environment.

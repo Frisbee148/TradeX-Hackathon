@@ -1,0 +1,11 @@
+/.env
+/inference.log
+/push.log
+/push_err.txt
+/trace.txt
+/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+**/__pycache__/
