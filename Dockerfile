@@ -7,12 +7,9 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends git && \
     rm -rf /var/lib/apt/lists/*
 
-ARG BUILD_MODE=in-repo
-ARG ENV_NAME=meverse
-
 COPY . /app/env
 
-WORKDIR /app/env
+WORKDIR /app/env/meverse
 
 RUN if ! command -v uv >/dev/null 2>&1; then \
         curl -LsSf https://astral.sh/uv/install.sh | sh && \
@@ -34,21 +31,19 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         uv sync --no-editable; \
     fi
 
-# Final runtime stage
 FROM ${BASE_IMAGE}
 
 WORKDIR /app
 
-COPY --from=builder /app/env/.venv /app/.venv
+COPY --from=builder /app/env/meverse/.venv /app/.venv
 COPY --from=builder /app/env /app/env
 
 ENV PATH="/app/.venv/bin:$PATH"
-ENV PYTHONPATH="/app/env:$PYTHONPATH"
+ENV PYTHONPATH="/app/env:/app/env/meverse:$PYTHONPATH"
 
-# HF Spaces uses port 7860 by default
 EXPOSE 7860
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:7860/health || exit 1
 
-CMD ["sh", "-c", "cd /app/env && uvicorn server.app:app --host 0.0.0.0 --port 7860"]
+CMD ["sh", "-c", "cd /app/env && uvicorn app:app --host 0.0.0.0 --port 7860"]

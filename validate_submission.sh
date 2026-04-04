@@ -18,6 +18,13 @@
 
 set -uo pipefail
 
+if [ -f ".env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+
 DOCKER_BUILD_TIMEOUT=600
 if [ -t 1 ]; then
   RED='\033[0;31m'
@@ -57,14 +64,16 @@ CLEANUP_FILES=()
 cleanup() { rm -f "${CLEANUP_FILES[@]+"${CLEANUP_FILES[@]}"}"; }
 trap cleanup EXIT
 
-PING_URL="${1:-}"
+PING_URL="${1:-${HF_SPACE_URL:-}}"
 REPO_DIR="${2:-.}"
 
 if [ -z "$PING_URL" ]; then
-  printf "Usage: %s <ping_url> [repo_dir]\n" "$0"
+  printf "Usage: %s [ping_url] [repo_dir]\n" "$0"
   printf "\n"
-  printf "  ping_url   Your HuggingFace Space URL (e.g. https://your-space.hf.space)\n"
+  printf "  ping_url   Your HuggingFace Space runtime URL (e.g. https://your-space.hf.space)\n"
   printf "  repo_dir   Path to your repo (default: current directory)\n"
+  printf "\n"
+  printf "If omitted, ping_url is read from HF_SPACE_URL in .env.\n"
   exit 1
 fi
 

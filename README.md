@@ -11,6 +11,19 @@ The environment models an AMM-style market and asks an agent to act as a market 
 
 The goal is to identify suspicious bot-like behavior while minimizing harm to normal users and preserving healthy market behavior.
 
+## For Judges
+
+This repository is intended to be evaluated in deterministic competition mode.
+
+- Use the root [inference.py](/home/casp1an/Code/TradeX1/inference.py) as the submission entrypoint.
+- Use the repo-root [Dockerfile](/home/casp1an/Code/TradeX1/Dockerfile) and repo-root [openenv.yaml](/home/casp1an/Code/TradeX1/openenv.yaml) as the primary submission artifacts.
+- Provide the required model environment variables: `API_BASE_URL`, `MODEL_NAME`, and `HF_TOKEN`.
+- Run with `EVAL_MODE=true` and `DEMO_MODE=false` so the environment uses a fixed seed and produces reproducible scores.
+- Treat the LLM-driven policy as the official baseline path.
+- Treat the heuristic policy only as a crash fallback and internal testing aid, not as the intended submitted baseline.
+
+This matches the project’s intended hackathon evaluation flow: a single inference entrypoint, deterministic task execution, and programmatic grading across all tasks.
+
 ## What The Benchmark Measures
 
 This benchmark is designed as a real-world surveillance and anomaly-detection task:
@@ -91,6 +104,8 @@ The rule-based heuristic in [meverse/baseline_policy.py](/home/casp1an/Code/Trad
 - crash fallback if the LLM call fails
 - benchmark comparison to test whether the environment has headroom beyond simple thresholds
 
+It is not the intended submitted baseline. It exists to support internal testing, benchmark analysis, and graceful degradation if the upstream model call fails during a run.
+
 The heuristic policy follows simple surveillance rules:
 
 - if pattern score is high and slippage is high, `BLOCK`
@@ -110,7 +125,6 @@ python app.py
 Validate the environment package directly:
 
 ```bash
-cd meverse
 openenv validate
 ```
 
@@ -152,9 +166,10 @@ If `HF_TOKEN` is not set, the script cannot use the primary LLM baseline and wil
 
 Mode behavior:
 
-- `EVAL_MODE=true` keeps runs reproducible for competition-style evaluation.
-- `DEMO_MODE=true` uses the episode seed to introduce small bounded observation variation for manual testing.
-- If `DEMO_MODE=true`, it takes precedence over `EVAL_MODE`.
+- `EVAL_MODE=true` is the official judging mode. The environment resets with a fixed seed so the observation sequence is deterministic and scores are reproducible across runs.
+- `DEMO_MODE=true` is an exploratory mode for local testing only. It introduces small bounded variation into the scenario so contributors can sanity-check that the policy is not overfitting one exact replay.
+- `DEMO_MODE=true` takes precedence over `EVAL_MODE`, so it should not be used when reporting baseline scores or when preparing a competition submission.
+- Judges should evaluate the project with `EVAL_MODE=true` and `DEMO_MODE=false`.
 
 ## Validation And Graders
 
@@ -186,4 +201,4 @@ When you run the validation suite, each task prints a normalized score and the s
 
 ## OpenEnv Metadata
 
-Project metadata for OpenEnv lives in [meverse/openenv.yaml](/d:/TradeX/meverse/openenv.yaml). It now describes the repository as a market surveillance benchmark rather than a trading or liquidity-management environment.
+Project metadata for OpenEnv lives in [openenv.yaml](/home/casp1an/Code/TradeX1/openenv.yaml). It describes the repository as a market surveillance benchmark rather than a trading or liquidity-management environment.
