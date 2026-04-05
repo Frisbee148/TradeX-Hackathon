@@ -6,6 +6,8 @@ import json
 import os
 import random
 import socket
+import traceback
+from pathlib import Path
 from typing import Any
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -69,6 +71,10 @@ PLOTLY_LAYOUT = dict(
     transition=dict(duration=600, easing="cubic-in-out"),
 )
 
+
+def _plotly_layout(**updates: Any) -> dict[str, Any]:
+    return {**PLOTLY_LAYOUT, **updates}
+
 # ---------------------------------------------------------------------------
 # Session state
 # ---------------------------------------------------------------------------
@@ -120,17 +126,27 @@ SIGNAL_NAMES = [
 
 def _empty_outputs(message: str) -> tuple:
     """Return placeholder outputs with an error/info message."""
-    empty_fig = go.Figure()
-    empty_fig.update_layout(**PLOTLY_LAYOUT, height=200)
-    empty_fig.add_annotation(
-        text=message, showarrow=False,
-        font=dict(size=14, color=COLORS["warning"]),
-        xref="paper", yref="paper", x=0.5, y=0.5,
-    )
+    empty_fig = _empty_plot(message)
     return (
         empty_fig, empty_fig, empty_fig, empty_fig,
         empty_fig, empty_fig, f"**Error:** {message}", [], empty_fig,
     )
+
+
+def _empty_plot(message: str | None = None, *, height: int = 200) -> go.Figure:
+    empty_fig = go.Figure()
+    empty_fig.update_layout(**_plotly_layout(height=height))
+    if message:
+        empty_fig.add_annotation(
+            text=message,
+            showarrow=False,
+            font=dict(size=14, color=COLORS["warning"]),
+            xref="paper",
+            yref="paper",
+            x=0.5,
+            y=0.5,
+        )
+    return empty_fig
 
 
 def run_full_episode(task_name: str, policy: str, seed: int | None) -> tuple:
@@ -748,112 +764,121 @@ def _make_amm_gauges(state: EpisodeState) -> go.Figure:
 # ---------------------------------------------------------------------------
 
 def compare_policies(task_name: str, seed: int | None) -> tuple:
-    valid_tasks = list_task_names()
-    if not task_name or task_name not in valid_tasks:
-        empty = go.Figure()
-        empty.update_layout(**PLOTLY_LAYOUT, height=200)
-        return empty, f"**Error:** Invalid task. Choose from: {', '.join(valid_tasks)}"
-    if seed is not None:
-        try:
-            seed = int(seed)
-            if seed < 0 or seed > 999999:
-                empty = go.Figure()
-                empty.update_layout(**PLOTLY_LAYOUT, height=200)
-                return empty, "**Error:** Seed must be between 0 and 999999."
-        except (ValueError, TypeError):
-            empty = go.Figure()
-            empty.update_layout(**PLOTLY_LAYOUT, height=200)
-            return empty, "**Error:** Seed must be a whole number."
-    if seed == 0:
-        seed = 42
+    try:
+        valid_tasks = list_task_names()
+        if not task_name or task_name not in valid_tasks:
+            return _empty_plot("Invalid task selection."), f"**Error:** Invalid task. Choose from: {', '.join(valid_tasks)}"
 
-    results = {}
-    for policy in ["Heuristic", "Always Allow", "Random"]:
-        env = MarketSurveillanceEnvironment(task=task_name, eval_mode=True, demo_mode=False)
-        obs = env.reset(task=task_name, seed=seed)
-        actions_list = []
-        labels_list = []
-        rewards_list = []
+        if seed is not None:
+            try:
+                seed = int(seed)
+                if seed < 0 or seed > 999999:
+                    return _empty_plot("Seed must be between 0 and 999999."), "**Error:** Seed must be between 0 and 999999."
+            except (ValueError, TypeError):
+                return _empty_plot("Seed must be a whole number."), "**Error:** Seed must be a whole number."
 
-        while not obs.done:
-            snap = env.debug_snapshot()
-            label = snap["current_step"]["label"] if snap["current_step"] else "normal"
+        if seed in (None, 0):
+            seed = 42
 
-            if policy == "Heuristic":
-                action = choose_surveillance_action(obs)
-            elif policy == "Random":
-                action = random.choice(["ALLOW", "FLAG", "BLOCK", "MONITOR"])
-            else:
-                action = "ALLOW"
+        results = {}
+        policy_names = ["Heuristic", "Always Allow", "Random"]
+        random_policy_rng = random.Random(seed)
+        for policy in policy_names:
+            env = MarketSurveillanceEnvironment(task=task_name, eval_mode=True, demo_mode=False)
+            obs = env.reset(task=task_name, seed=seed)
+            rewards_list = []
 
-            obs = env.step(SurveillanceAction(action_type=action))
-            actions_list.append(action)
-            labels_list.append(label)
-            rewards_list.append(float(obs.reward or 0.0))
+            while not obs.done:
+                if policy == "Heuristic":
+                    action = choose_surveillance_action(obs)
+                elif policy == "Random":
+                    action = random_policy_rng.choice(["ALLOW", "FLAG", "BLOCK", "MONITOR"])
+                else:
+                    action = "ALLOW"
 
-        grade = env.grade()
-        results[policy] = {
-            "score": grade["score"],
-            "detection": grade["detection_score"],
-            "fp": grade["false_positive_score"],
-            "fn": grade["false_negative_score"],
-            "health": grade["health_score"],
-            "overblock": grade["overblocking_score"],
-            "total_reward": sum(rewards_list),
-        }
+                obs = env.step(SurveillanceAction(action_type=action))
+                rewards_list.append(float(obs.reward or 0.0))
 
-    # Bar chart comparison
-    policies = list(results.keys())
-    metrics = ["score", "detection", "fp", "fn", "health", "overblock"]
-    metric_labels = ["Final Score", "Detection", "False Pos.", "False Neg.", "Health", "Overblocking"]
-    bar_colors = [COLORS["accent"], COLORS["accent2"], COLORS["success"], COLORS["danger"], COLORS["info"], COLORS["warning"]]
+            grade = env.grade()
+            results[policy] = {
+                "score": float(grade["score"]),
+                "detection": float(grade["detection_score"]),
+                "fp": float(grade["false_positive_score"]),
+                "fn": float(grade["false_negative_score"]),
+                "health": float(grade["health_score"]),
+                "overblock": float(grade["overblocking_score"]),
+                "total_reward": float(sum(rewards_list)),
+            }
 
-    fig = go.Figure()
-    for i, (m, ml) in enumerate(zip(metrics, metric_labels)):
-        fig.add_trace(go.Bar(
-            x=policies,
-            y=[results[p][m] for p in policies],
-            name=ml,
-            marker_color=bar_colors[i],
+        policies = list(results.keys())
+        metrics = ["score", "detection", "fp", "fn", "health", "overblock"]
+        metric_labels = ["Final Score", "Detection", "False Pos.", "False Neg.", "Health", "Overblocking"]
+        bar_colors = [COLORS["accent"], COLORS["accent2"], COLORS["success"], COLORS["danger"], COLORS["info"], COLORS["warning"]]
+
+        fig = go.Figure()
+        for index, (metric, label) in enumerate(zip(metrics, metric_labels)):
+            fig.add_trace(go.Bar(
+                x=policies,
+                y=[results[policy][metric] for policy in policies],
+                name=label,
+                marker_color=bar_colors[index],
+            ))
+
+        fig.update_layout(**_plotly_layout(
+            title=dict(text=f"Policy Comparison — {task_name}", font=dict(size=14)),
+            barmode="group",
+            yaxis_title="Score",
+            legend=dict(orientation="h", y=1.12, x=0.5, xanchor="center"),
+            height=400,
         ))
+        summary = f"""### Policy Comparison (seed={seed})
 
-    fig.update_layout(
-        **PLOTLY_LAYOUT,
-        title=dict(text=f"Policy Comparison — {task_name}", font=dict(size=14)),
-        barmode="group",
-        yaxis_title="Score",
-        legend=dict(orientation="h", y=1.12, x=0.5, xanchor="center"),
-        height=400,
-        transition=dict(duration=600, easing="cubic-in-out"),
-    )
-
-    # Summary table
-    summary = f"""### Policy Comparison (seed={seed})
-
-| Policy | Score | Detection | FP | FN | Health | Total Reward |
-|--------|-------|-----------|----|----|--------|--------------|
+| Policy | Score | Detection | FP | FN | Health | Overblocking | Total Reward |
+|--------|-------|-----------|----|----|--------|--------------|--------------|
 """
-    for p in policies:
-        r = results[p]
-        summary += f"| {p} | {r['score']:.4f} | {r['detection']:.4f} | {r['fp']:.4f} | {r['fn']:.4f} | {r['health']:.4f} | {r['total_reward']:.2f} |\n"
+        for policy in policies:
+            result = results[policy]
+            summary += (
+                f"| {policy} | {result['score']:.4f} | {result['detection']:.4f} | {result['fp']:.4f} | "
+                f"{result['fn']:.4f} | {result['health']:.4f} | {result['overblock']:.4f} | {result['total_reward']:.2f} |\n"
+            )
 
-    return fig, summary
+        return fig, summary
+    except Exception as exc:
+        traceback.print_exc()
+        return _empty_plot("Policy comparison failed."), f"**Error:** Policy comparison failed: `{type(exc).__name__}: {exc}`"
 
 
 # ---------------------------------------------------------------------------
 # Telemetry viewer
 # ---------------------------------------------------------------------------
 
+def _load_text_file(file: Any) -> str:
+    if isinstance(file, bytes):
+        return file.decode("utf-8")
+    if isinstance(file, str):
+        return Path(file).read_text(encoding="utf-8")
+    if hasattr(file, "read"):
+        content = file.read()
+        return content.decode("utf-8") if isinstance(content, bytes) else str(content)
+    if hasattr(file, "name"):
+        return Path(file.name).read_text(encoding="utf-8")
+    raise TypeError(f"Unsupported telemetry input type: {type(file).__name__}")
+
+
 def load_telemetry(file) -> tuple:
     if file is None:
-        return go.Figure(), "Upload a `.jsonl` telemetry file to visualize."
+        return _empty_plot("Upload a .jsonl telemetry file to visualize."), "Upload a `.jsonl` telemetry file to visualize."
 
-    content = file.decode("utf-8") if isinstance(file, bytes) else open(file.name, "r").read()
-    lines = [json.loads(l) for l in content.strip().split("\n") if l.strip()]
+    try:
+        content = _load_text_file(file)
+        lines = [json.loads(line) for line in content.splitlines() if line.strip()]
+    except (OSError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return _empty_plot("Telemetry file could not be read."), f"**Error:** Could not read telemetry file. {exc}"
 
     steps = [e for e in lines if e.get("event") == "step"]
     if not steps:
-        return go.Figure(), "No step events found in telemetry file."
+        return _empty_plot("No step events found in telemetry file."), "No step events found in telemetry file."
 
     rewards = [s.get("reward", 0) for s in steps]
     actions = [s.get("action", "?") for s in steps]
@@ -865,22 +890,28 @@ def load_telemetry(file) -> tuple:
         marker_color=[ACTION_COLORS.get(a, "#888") for a in actions],
         hovertemplate="Step %{x}<br>Reward: %{y:.3f}<extra></extra>",
     ))
-    fig.update_layout(
-        **PLOTLY_LAYOUT,
+    fig.update_layout(**_plotly_layout(
         title=dict(text="Telemetry Replay — Rewards", font=dict(size=14)),
         xaxis_title="Step",
         yaxis_title="Reward",
         height=350,
-        transition=dict(duration=600, easing="cubic-in-out"),
-    )
+    ))
 
     # Extract grade if available
     end_events = [e for e in lines if e.get("event") == "episode_end"]
-    summary = f"**Steps:** {len(steps)} | **Total reward:** {sum(rewards):.3f}"
+    start_event = next((e for e in lines if e.get("event") == "episode_start"), {})
+    task_name = start_event.get("task") or steps[0].get("decision_observation", {}).get("task_name", "unknown")
+    model_name = start_event.get("model", "unknown")
+    summary = (
+        f"**Task:** {task_name}  \n"
+        f"**Model:** {model_name}  \n"
+        f"**Steps:** {len(steps)}  \n"
+        f"**Total reward:** {sum(rewards):.3f}"
+    )
     if end_events:
         grade = end_events[0].get("grade", {})
         if grade:
-            summary += f"\n\n**Final score:** {grade.get('score', 'N/A')}"
+            summary += f"  \n**Final score:** {grade.get('score', 'N/A')}"
 
     return fig, summary
 
@@ -1151,6 +1182,7 @@ def build_app() -> gr.Blocks:
                         reward_chart, action_chart, signal_heatmap, amm_chart,
                         grade_chart, confusion_chart, summary_md, step_table, amm_gauges,
                     ],
+                    queue=False,
                 )
 
             # =============== TAB 2: Policy Comparison ===============
@@ -1177,12 +1209,13 @@ def build_app() -> gr.Blocks:
                     fn=compare_policies,
                     inputs=[cmp_task, cmp_seed],
                     outputs=[cmp_chart, cmp_summary],
+                    queue=False,
                 )
 
             # =============== TAB 3: Telemetry Viewer ===============
             with gr.Tab("Telemetry Viewer"):
                 gr.Markdown("#### Upload a JSONL telemetry file to replay and visualize")
-                telem_file = gr.File(label="Upload .jsonl", file_types=[".jsonl"], file_count="single")
+                telem_file = gr.File(label="Upload .jsonl", file_types=[".jsonl"], file_count="single", type="filepath")
                 telem_chart = gr.Plot(label="Telemetry Rewards")
                 telem_summary = gr.Markdown()
 
@@ -1190,6 +1223,7 @@ def build_app() -> gr.Blocks:
                     fn=load_telemetry,
                     inputs=[telem_file],
                     outputs=[telem_chart, telem_summary],
+                    queue=False,
                 )
 
             # =============== TAB 4: About ===============
