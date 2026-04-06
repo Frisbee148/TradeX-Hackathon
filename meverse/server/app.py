@@ -1,5 +1,7 @@
 """FastAPI application for the market surveillance environment."""
 
+from fastapi.responses import RedirectResponse
+
 try:
     from openenv.core.env_server.http_server import create_app
 except Exception as e:
@@ -20,6 +22,12 @@ app = create_app(
     env_name="amm-market-surveillance",
     max_concurrent_envs=1,
 )
+
+
+@app.get("/")
+def root():
+    """Redirect root to the API docs."""
+    return RedirectResponse(url="/docs")
 
 
 def main(host: str = "0.0.0.0", port: int = 7860):

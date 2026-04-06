@@ -1,3 +1,12 @@
+---
+title: TradeX Surveillance Dashboard
+emoji: "📊"
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+---
+
 # TradeX: Bot-Aware Market Surveillance in Simulated AMM Trading
 
 TradeX is a reinforcement-learning benchmark environment built on the [OpenEnv](https://github.com/openenv) framework. It simulates a constant-product Automated Market Maker (AMM) pool and asks an AI agent to act as a **market surveillance controller** — detecting suspicious bot-driven trading activity in real time while preserving healthy market participation.
