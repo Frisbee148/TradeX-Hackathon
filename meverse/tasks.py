@@ -178,13 +178,17 @@ def compute_task_grade(task_name: str, actions: List[str], labels: List[str]) ->
         + 0.10 * health_score
         + 0.05 * overblocking_score
     )
-    final_score = min(1.0, max(0.0, final_score))
+    # Clamp strictly between 0 and 1 (exclusive) as required by the grading pipeline
+    def _strict_clamp(v: float) -> float:
+        return min(0.9999, max(0.0001, v))
+
+    final_score = _strict_clamp(final_score)
 
     return {
         "score": round(final_score, 4),
-        "detection_score": round(detection_score, 4),
-        "false_positive_score": round(false_positive_score, 4),
-        "false_negative_score": round(false_negative_score, 4),
-        "health_score": round(health_score, 4),
-        "overblocking_score": round(overblocking_score, 4),
+        "detection_score": round(_strict_clamp(detection_score), 4),
+        "false_positive_score": round(_strict_clamp(false_positive_score), 4),
+        "false_negative_score": round(_strict_clamp(false_negative_score), 4),
+        "health_score": round(_strict_clamp(health_score), 4),
+        "overblocking_score": round(_strict_clamp(overblocking_score), 4),
     }

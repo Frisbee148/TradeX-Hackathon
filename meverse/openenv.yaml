@@ -20,9 +20,12 @@ tasks:
   - name: burst_detection
     description: "Task 1 - Burst Detection. Catch abrupt high-frequency suspicious bursts while minimizing harm to normal traffic."
     difficulty: easy
+    grader: programmatic
   - name: pattern_manipulation_detection
     description: "Task 2 - Pattern-based Manipulation Detection. Detect repeated timing and size signatures that imply coordinated manipulation."
     difficulty: medium
+    grader: programmatic
   - name: full_market_surveillance
     description: "Task 3 - Full Market Surveillance. Balance burst, pattern, and false-positive control across mixed activity."
     difficulty: hard
+    grader: programmatic
