@@ -38,7 +38,10 @@ def train(args):
     
     start_ep = 0
     if os.path.exists("models/best_model.pth"):
-        policy.load_state_dict(torch.load("models/best_model.pth", map_location=device, weights_only=True))
+        try:
+            policy.load_state_dict(torch.load("models/best_model.pth", map_location=device, weights_only=True))
+        except RuntimeError as e:
+            print("Architecture change detected. Starting training from scratch (Discarding old 53-dim model).")
         
     optimizer = optim.Adam(policy.parameters(), lr=1e-3)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=200, gamma=0.8)
@@ -53,7 +56,7 @@ def train(args):
     ppo_epochs = 4
     mini_batch_size = 64
     
-    target_entropy = 0.05
+    target_entropy = 0.10
     allow_streak = 0
     
     for episode in range(start_ep, args.episodes):
@@ -120,31 +123,38 @@ def train(args):
                 print(f"Price: {old_price:.1f}\n")
                 print("Actions:")
                 
-                # Show all interactions
-                agents_acted = {t['agent']: t for t in info["step_trades"]}
+                agents_acted = {t['agent']: t for t in info["executed_trades"] + ([t for t in info["intended_trades"] if t['agent'] == (action_idx-1)])}
                 for i, a_type in info['agent_types'].items():
                     if i in agents_acted:
                         t = agents_acted[i]
-                        suspicious = " (suspicious burst)" if t['size'] > 10 and a_type == "Manipulator" else ""
-                        print(f"{a_type:14s} -> {t['action']} {t['size']:.1f}{suspicious}")
+                        print(f"{a_type:14s} -> {t['action']} {t['size']:.1f}")
                     else:
                         print(f"{a_type:14s} -> HOLD")
                         
-                threat = 0.5 + (info.get("correct_detect", 0) * 0.4) + (random.random() * 0.1)
+                threat = info["threat_score"]
                 print(f"\nOverseer Analysis:\nThreat Score: {threat:.2f}")
                 
-                if action_str != "ALLOW":
-                    real_target = info['agent_types'].get(action_idx-1, 'N/A')
-                    print("Pattern:")
-                    print(f"- {info.get('block_reason', 'Behavioral Anomaly')}")
-                    print(f"- price spike tracking detected")
-                    print("- likely pump setup")
-                    print(f"\nDecision:\nBLOCK_{real_target}")
-                    print(f"\nConfidence:\n{confidence:.0f}%")
-                    print(f"\nOutcome:\nTrade cancelled\nPrice returns to {env.price:.1f}\nReward: {reward:.2f}")
+                if threat > 0.3:
+                    print("Detected:")
+                    lines = info["block_reason"].split("- ")
+                    for line in lines:
+                        if line.strip():
+                            print(f"- {line.strip()}")
                 else:
-                    print("Decision: ALLOW\nReason: normal flow")
-                    print(f"Outcome:\nTrade allowed\nPrice becomes {env.price:.1f}\nReward: {reward:.2f}")
+                    print("Detected:\n- routine liquidity flow")
+                
+                if action_str != "ALLOW":
+                    real_target = f"BLOCK_{info['agent_types'].get(action_idx-1, 'Unknown')}"
+                    print(f"\nDecision:\n{real_target}")
+                    print(f"\nConfidence:\n{confidence:.0f}%")
+                    print(f"\nOutcome:\nTrade cancelled\nPrice stabilized to {env.price:.1f}\nReward: {reward:.2f}")
+                else:
+                    print("\nDecision:\nALLOW")
+                    print(f"\nConfidence:\n{confidence:.0f}%")
+                    if threat > 0.5:
+                        print(f"\nOutcome:\nCatastrophic miss!\nPrice crashes to {env.price:.1f}\nReward: {reward:.2f}")
+                    else:
+                        print(f"\nOutcome:\nNormal trading continued\nReward: {reward:.2f}")
 
             step_logs.append({
                 "timestep": env.timestep,
@@ -155,21 +165,21 @@ def train(args):
             
         # Minimum intervention penalty
         if ep_correct_blocks == 0 and ep_false_positives == 0 and ep_missed_attacks > 0:
-            reward_buffer[-1] -= 2.0
-            ep_total_reward -= 2.0
+            reward_buffer[-1] -= 5.0 # Massive episode penalty
+            ep_total_reward -= 5.0
             
         total_actions = sum(action_counts.values())
         allow_pct = (action_counts["ALLOW"] / total_actions) * 100 if total_actions > 0 else 100.0
         
-        if allow_pct > 95:
+        if allow_pct > 90:
             allow_streak += 1
-            if allow_streak >= 50:
-                target_entropy = min(0.5, target_entropy + 0.05)
+            if allow_streak >= 100:
+                target_entropy = min(0.6, target_entropy + 0.15)
                 allow_streak = 0
         else:
             allow_streak = 0
-            if target_entropy > 0.02:
-                target_entropy *= 0.99
+            if target_entropy > 0.05:
+                target_entropy *= 0.98
                 
         returns = compute_gae(reward_buffer, val_buffer)
         returns = torch.tensor(returns, dtype=torch.float32).to(device)

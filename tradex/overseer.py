@@ -3,7 +3,7 @@ import torch.nn as nn
 import numpy as np
 
 class Overseer(nn.Module):
-    def __init__(self, obs_dim=53, hidden_dim=256, out_dim=5):
+    def __init__(self, obs_dim=54, hidden_dim=256, out_dim=5):
         super().__init__()
         # Extracted feature processor
         self.net = nn.Sequential(
@@ -51,7 +51,8 @@ def encode_observation(obs):
         np.log1p(obs['liquidity']/1000.0),
         obs['price_dev']/100.0,
         obs['timestep']/50.0,
-        obs['stage']/5.0
+        obs['stage']/5.0,
+        obs.get('threat_score', 0.0) 
     ]
     v += [p/100.0 for p in obs['price_history']]
     
