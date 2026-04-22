@@ -46,18 +46,28 @@ class Manipulator(Agent):
         self.trigger_time = random.randint(15, 45)
 
     def act(self, price, timestep, stage, last_action_blocked, price_history=None):
+        # Curriculum:
+        # Stage 1-2: Obvious massive attacks (A)
+        # Stage 3: Burst Accumulation (B)
+        # Stage 4-5: Stealth manipulation (C/D)
+        
+        my_strat = self.strategy
+        if stage <= 2: my_strat = "A"
+        elif stage == 3: my_strat = random.choice(["A", "B"])
+        elif stage >= 4: my_strat = random.choice(["B", "C", "D"])
+        
         # spoof / pump-dump / deceptive strategy
-        if self.strategy == "A": # Pump then instant dump
+        if my_strat == "A": # Pump then instant dump (GIANT SIZES for easy early discovery)
             if timestep == self.trigger_time - 5:
-                amt = 25.0
+                amt = 35.0 if stage <= 2 else 25.0
                 self.accumulated += amt
                 return "BUY", amt
             if timestep == self.trigger_time and self.accumulated > 0:
-                amt = self.accumulated * 1.5
+                amt = self.accumulated * 2.0
                 self.accumulated = 0
                 return "SELL", amt
                 
-        elif self.strategy == "B": # Slow stealth accumulation then huge sell
+        elif my_strat == "B": # Slow stealth accumulation then huge sell
             if timestep < self.trigger_time and timestep % 3 == 0:
                 amt = 3.0
                 self.accumulated += amt

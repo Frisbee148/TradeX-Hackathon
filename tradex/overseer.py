@@ -3,9 +3,8 @@ import torch.nn as nn
 import numpy as np
 
 class Overseer(nn.Module):
-    def __init__(self, obs_dim=54, hidden_dim=256, out_dim=5):
+    def __init__(self, obs_dim=54, hidden_dim=256):
         super().__init__()
-        # Extracted feature processor
         self.net = nn.Sequential(
             nn.Linear(obs_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
@@ -17,8 +16,11 @@ class Overseer(nn.Module):
             nn.LayerNorm(hidden_dim // 2),
             nn.ReLU()
         )
-        self.actor = nn.Sequential(
-            nn.Linear(hidden_dim // 2, out_dim)
+        self.actor_intervene = nn.Sequential(
+            nn.Linear(hidden_dim // 2, 2)
+        )
+        self.actor_target = nn.Sequential(
+            nn.Linear(hidden_dim // 2, 4)
         )
         self.critic = nn.Sequential(
             nn.Linear(hidden_dim // 2, 1)
@@ -26,14 +28,33 @@ class Overseer(nn.Module):
         
     def forward(self, x):
         h = self.net(x)
-        logits = self.actor(h)
+        
+        logits_intervene = self.actor_intervene(h)
+        logits_target = self.actor_target(h)
         value = self.critic(h)
-        return logits, value
+        
+        threat_score = x[:, 53]
+        
+        # Add strong prior favoring intervention when threat is critical
+        prior_boost = (threat_score > 0.85).float() * 10.0
+        logits_intervene[:, 1] += prior_boost
+        
+        prob_intervene = torch.softmax(logits_intervene, dim=-1)
+        prob_target = torch.softmax(logits_target, dim=-1)
+        
+        p_allow = prob_intervene[:, 0:1]
+        p_block = prob_intervene[:, 1:2] * prob_target
+        
+        probs = torch.cat([p_allow, p_block], dim=-1)
+        # Add epsilon to prevent log(0)
+        probs = probs + 1e-8
+        probs = probs / probs.sum(dim=-1, keepdim=True)
+        
+        return probs, value
         
     def select_action(self, obs_vec, deterministic=False):
         x = torch.tensor(obs_vec, dtype=torch.float32).unsqueeze(0)
-        logits, val = self.forward(x)
-        probs = torch.softmax(logits, dim=-1)
+        probs, val = self.forward(x)
         
         if deterministic:
             action = torch.argmax(probs, dim=-1)
