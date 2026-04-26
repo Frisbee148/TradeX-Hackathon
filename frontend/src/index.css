@@ -1,0 +1,28 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background: radial-gradient(circle at top, #172641 0%, #0b1120 55%);
+  color: #e2e8f0;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 3vw, 2.7rem);
+}
+
+code {
+  background: #1f2937;
+  border: 1px solid #334155;
+  border-radius: 0.4rem;
+  padding: 0.1rem 0.3rem;
+}

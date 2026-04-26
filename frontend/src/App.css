@@ -1,0 +1,91 @@
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2.5rem 1rem 3rem;
+}
+
+.hero {
+  text-align: left;
+  margin-bottom: 1.5rem;
+}
+
+.chip {
+  display: inline-block;
+  margin: 0 0 0.75rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid #2e3b59;
+  border-radius: 999px;
+  color: #b7ccff;
+  font-size: 0.85rem;
+}
+
+.subtitle {
+  margin: 0.75rem 0 1rem;
+  color: #ccd6e3;
+  max-width: 700px;
+}
+
+.ctaRow {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.button {
+  text-decoration: none;
+  color: #e9edf5;
+  border: 1px solid #3f4f75;
+  border-radius: 0.6rem;
+  padding: 0.6rem 1rem;
+  background: #16213a;
+}
+
+.button.primary {
+  background: #2a3f77;
+  border-color: #5775c0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.9rem;
+}
+
+.card,
+.panel {
+  border: 1px solid #28314a;
+  border-radius: 0.75rem;
+  background: #111827;
+  padding: 1rem;
+}
+
+.card h2,
+.panel h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.card p {
+  margin: 0;
+  color: #cbd5e1;
+}
+
+.panel {
+  margin-top: 1rem;
+  text-align: left;
+}
+
+.panel ol {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.links a {
+  color: #9bc5ff;
+}
