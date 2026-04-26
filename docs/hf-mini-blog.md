@@ -1,95 +1,77 @@
-# TradeX on Hugging Face: PPO Today, TRL Pathway Next
+# From Alarm Bells to Agent Policy: Building a Market Surveillance Environment
 
-TradeX is a multi-agent AMM governance environment where autonomous trading agents interact strategically and an Overseer learns intervention behavior from reward feedback.
+Companion to the project README: [`../README.md`](../README.md)
 
-The current production path in this repository is a working PPO pipeline in `tradex/`. The project is also designed to transition toward Hugging Face TRL workflows for an LLM-style Overseer without misrepresenting what is already implemented.
+## The story in one paragraph
 
-## Why this matters
+AMM markets do not fail because one bad trade appears; they fail because suspicious behavior compounds while everyone reacts. We built TradeX + MEVerse to model that compounding effect and train agents to make intervention decisions under uncertainty. Instead of asking "is this trade malicious?", we ask "what action now keeps the next 20 steps healthier?"
 
-AMM ecosystems face adversarial behavior that can look legitimate in isolation:
+## 1) Problem
 
-- spoofing
-- pump and dump
-- burst manipulation
-- front-running style timing attacks
-- MEV-like extraction behavior
+We target a practical capability gap: sequential market surveillance.
 
-TradeX models these pressures as a governance problem under partial observability.
+Most benchmarks stop at static detection labels. Real governance needs policies that balance:
 
-## Agent ecosystem
+- catching manipulation early,
+- avoiding unnecessary blocks,
+- preserving market health across time.
 
-TradeX uses these roles:
+The domain here is adversarial AMM trading with burst and pattern manipulations that can resemble normal activity until context accumulates.
 
-- **NormalTrader** -> mean-reversion / value trader
-- **ManipulatorBot** -> spoof / pump-dump adversary
-- **ArbitrageAgent** -> price-correcting stabilizer
-- **LiquidityProvider** -> passive market maker
-- **Overseer Agent** -> governance controller
+## 2) Environment
 
-These agents are strategically coupled. One agent's trade changes AMM price and liquidity, which in turn reshapes incentives for every other agent and the Overseer.
+The benchmarkable environment is `meverse/`, served through OpenEnv/FastAPI.
 
-## Multi-Agent Strategic Interaction
+- **Agent observations:** AMM price/liquidity, trade burst/pattern indicators, slippage and frequency features, suspiciousness/manipulation scores.
+- **Action space:** `ALLOW`, `MONITOR`, `FLAG`, `BLOCK`.
+- **Reward loop:** action quality is rewarded per-step, and actions update AMM state so future observations change.
+- **Tasks:** `burst_detection`, `pattern_manipulation_detection`, `full_market_surveillance` (declared in `openenv.yaml`).
 
-The Overseer observes combined market signals and must infer intent, then choose:
+Under the hood, this uses the OpenEnv `Environment` base class in `meverse/server/meverse_environment.py` and standard lifecycle methods (`reset`, `step`, `state`).
 
-- `ALLOW`
-- `MONITOR`
-- `FLAG`
-- `BLOCK`
+## 3) Results
 
-In the current PPO stack, policy actions are implemented as allow/block-target controls, while the broader governance action space is maintained as the long-term interface.
+What is trained today is the `tradex/` PPO overseer stack; what is deployment-ready today is the `meverse/` OpenEnv benchmark stack.
 
-## Current PPO Training Loop
+- PPO training pipeline exists and runs from `tradex/train.py`.
+- Generalization benchmarking is available via `python -m tradex.compare_generalization`.
+- Trained checkpoints are stored in `models/`.
+- In observed runs, policy behavior shifts from permissive defaults toward targeted interventions on high-threat episodes, improving task-relevant metrics over baselines.
 
-- Environment rollouts generated
-- Overseer policy acts on observations
-- Rewards based on detection accuracy, false positives, and market stability
-- PPO updates weights
-- Best checkpoints benchmarked
+This split is intentional: `tradex/` explores training dynamics, while `meverse/` provides a clean benchmark contract for evaluation and HF deployment.
 
-`python -m tradex.compare_generalization` is currently runnable and provides benchmark output over unseen seeds.
+## 4) Why it matters
 
-## Future TRL Training Loop
+This matters to anyone evaluating whether LLM/RL agents can do reliable governance in dynamic systems:
 
-- Same environment can emit text observations
-- LLM Overseer can be fine-tuned with TRL
-- Rewards from environment can optimize policy
+- **Researchers:** a compact environment where action changes future risk.
+- **Builders:** a practical testbed for surveillance policies before production.
+- **Reviewers/Judges:** a setup that is ambitious but grounded in runnable artifacts and clear interfaces.
 
-Planned extension points include:
-- Hugging Face TRL policy optimization
-- Unsloth LoRA for efficient fine-tuning
-- prompt optimization and GRPO-style iteration
+If we want frontier-capable agents, we need environments where they are judged on long-horizon decisions, not one-shot labels.
 
-## Governance learning flow
+## Engineering quality notes
 
-```text
-Agents trade against each other
-        ↓
-AMM price / liquidity changes
-        ↓
-Other agents react strategically
-        ↓
-Market state evolves
-        ↓
-Overseer observes combined signals
-        ↓
-Chooses ALLOW / MONITOR / FLAG / BLOCK
-        ↓
-Environment returns reward
-        ↓
-PPO updates policy now
-TRL updates policy later
-        ↓
-Smarter future governance
+Current implementation checks the table-stakes boxes:
+
+- OpenEnv base classes are used correctly.
+- Client/server separation is respected (`meverse/client.py` vs `meverse/server/`).
+- Gym-style lifecycle is implemented.
+- `openenv.yaml` is valid and task-complete.
+- Reserved endpoint/tool names are not reused for custom MCP tools.
+
+## Try it
+
+```bash
+pip install -r requirements.txt
+python -m tradex.compare_generalization
+python server/app.py
+python dashboard.py
 ```
 
-## Benchmark framing
+## Links to include when publishing
 
-TradeX evaluation should compare:
-
-- Heuristic baseline
-- Static prompted model (future)
-- PPO-trained Overseer (current)
-- TRL-trained Overseer (future)
-
-This keeps experimentation honest: strong current PPO baseline, clear roadmap toward Hugging Face-native LLM governance training.
+- Project README: [`../README.md`](../README.md)
+- Architecture deep dive: [`architecture.md`](architecture.md)
+- Add your Hugging Face Space URL here
+- Add your demo video URL here
